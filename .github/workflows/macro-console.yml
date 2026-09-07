@@ -1,0 +1,58 @@
+name: macro-console
+
+# 매일 07:20 KST (= 22:20 UTC 전일) 갱신. 주말은 시세가 안 바뀌므로 평일만.
+on:
+  schedule:
+    - cron: "20 22 * * 0-4"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macro-console
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install --quiet pandas xlrd
+
+      - name: 시세 수집 (Yahoo)
+        run: |
+          for g in indices commodities fx_rates sectors_us sectors_kr realestate; do
+            python macro-src/collect.py $g || echo "  [warn] $g 실패 — 직전 데이터 유지"
+          done
+
+      - name: 거시 · 기관 13F 수집
+        run: |
+          python macro-src/collect.py macro || echo "  [warn] 거시 실패"
+          python macro-src/collect.py 13f   || echo "  [warn] 13F 실패"
+
+      - name: 한국 부동산 (R-ONE)
+        env:
+          RONE_KEY: ${{ secrets.RONE_KEY }}
+        run: python macro-src/collect_kr.py || echo "  [warn] R-ONE 실패"
+
+      - name: 금리 시나리오 · FOMC 일정
+        run: python macro-src/build_extra.py || echo "  [warn] extra 실패"
+
+      - name: 페이지 생성
+        run: python macro-src/build_ci.py
+
+      - name: 커밋
+        run: |
+          git config user.name  "macro-console-bot"
+          git config user.email "actions@github.com"
+          git add macro/index.html macro-src/raw
+          git diff --cached --quiet || git commit -m "chore: 관제실 자동 갱신 $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M KST')"
+          git push
