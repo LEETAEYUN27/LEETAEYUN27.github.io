@@ -5,6 +5,11 @@ on:
   schedule:
     - cron: "20 22 * * 0-4"
   workflow_dispatch: {}
+  # 소스를 고치면 즉시 다시 빌드한다
+  push:
+    paths:
+      - "macro-src/**"
+      - ".github/workflows/macro-console.yml"
 
 permissions:
   contents: write
